@@ -7,3 +7,10 @@ services:
     environment:
       MYSQL_DATABASE: springboot
       MYSQL_ROOT_PASSWORD: springtest
+  db2:
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: springboot
+      POSTGRES_PASSWORD: springtest
