@@ -4,7 +4,7 @@
 - 환경에 따라 기술이 바뀌었을 때 API를 사용하고 다른 스타일의 접근 방법을 따르는 건 매우 피곤한 일
 - 스프링은 성격이 비슷한 종류의 기술을 추상화하고 이를 일관된 방법으로 사용할 수 있도록 지원
 
-## 코드 개선
+## 5.1 사용자 레벨 관리 기능 추가(리팩토링)
 
 ### 기존 코드
 
@@ -173,3 +173,65 @@ public void upgradeLevels() {
     }
 }
 ```
+
+## 트랜잭션 서비스 추상화
+
+- 트랜잭션이란?
+    - **더 이상 나눌 수 없는 단위 작업**
+    - 작업 수행의 논리적인 단위
+    - 데이터 부정합을 방지하기 위해 사용
+- 트랜잭션이 충족 요건 **ACID**
+    - 원자성
+        - 완전히 **끝마치지 않은 경우 전혀 이루어지지 않은 것과 동일**
+        - 모두 성공하거나 모두 실패하거나 둘중 하나
+    - 일관성
+        - 트랜잭션이 성공적으로 완료되면 **일관적인 DB 상태를 유지**하는 것을 말함
+        - 여기서 일관성은 데이터 타입이 정수형인데 갑자기 문자열이 되지 않는 것을 말함
+    - 격리성
+        - 트랜잭션 수행시 **다른 트랜잭션의 작업이 끼어들지 못하도록 보장**하는 것을 말함
+        - 트랜잭션 끼리 간섭 X
+    - 지속성
+        - 성공적으로 수행된 트랜잭션은 **영원히 반영**
+        - commit을 하면 현재 상태를 영원히 보장
+
+### UserService에 트랜잭션을 넣고 싶으면?
+
+- `upgradeLevels()` 메소드를 DAO안으로 옮기는 방법
+    - 비즈니스 로직과 데이터 로직을 한곳에 묶어버리는 결과 ... (단일 책임 원칙을 여태껏 지키려 했던게 무의미)
+- Service에 트랜잭션을 넣으려면 **Connection 오브젝트를 계속 들고 다녀야 하는 문제점**
+    - PlatformTransactionManager 주입
+
+```java
+    public void setTransactionManager(PlatformTransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
+    }
+
+    public UserService(UserDao userDao, PlatformTransactionManager transactionManager) {
+        this.userDao = userDao;
+        this.transactionManager = transactionManager;
+    }
+```
+
+```java
+    public void upgradeLevels() {
+
+        TransactionStatus status = transactionManager.getTransaction(new DefaultTransactionDefinition());
+
+        try {
+            final List<User> users = userDao.getAll();
+
+            for (User user : users) {
+                if (canUpgradeLevel(user)) {
+                    upgradeLevel(user);
+                }
+            }
+
+            transactionManager.commit(status);
+        } catch (RuntimeException e) {
+            transactionManager.rollback(status);
+            throw e;
+        }
+    }
+```
+
+-> PlatformTransactionManager를 어떤 의존성(DataSourceTransactionManger, JTATransactionManger) 주입을 받냐에 따라서 JDBC or JTA를 적용 (서비스 추상화)
